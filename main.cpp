@@ -3,6 +3,9 @@
 #include <chrono>   // for high_resolution_clock
 #include <string>   // for string
 #include <iostream> // for cout
+#include <algorithm>
+#include <numeric>
+#include <map>
 using namespace std;
 
 using FeatureType = vector<vector<vector<vector<int>>>>;
@@ -235,7 +238,154 @@ FeatureType manual_block_reduce(const FeatureType& input_array, const pair<int, 
     return output_array;
 }
 
-// 3. 
+// 3.
+// Normalization函式
+Matrix Norm(const Matrix& feature) {
+    Matrix normalized(feature.size(), vector<float>(feature[0].size(), 0.0f));
+    for (size_t i = 0; i < feature.size(); ++i) {
+        float min_val = *min_element(feature[i].begin(), feature[i].end());
+        float sum = 0.0f;
+        for (float val : feature[i]) 
+            sum += (val - min_val);
+
+        for (size_t j = 0; j < feature[i].size(); ++j) {
+            normalized[i][j] = (feature[i][j] - min_val) / sum;
+        }
+    }
+    return normalized;
+}
+
+// ReLU 函數
+Matrix Relu(const Matrix& input) {
+    Matrix result = input;
+    for (auto& row : result) {
+        for (auto& val : row) {
+            val = max(0.0f, val);
+        }
+    }
+    return result;
+}
+
+// KMeans 類的簡易實現
+class KMeans {
+public:
+    KMeans(int clusters, int batch_size) : clusters_(clusters), batch_size_(batch_size) {}
+    void fit(const Matrix& data) {
+        // 假設這裡是一個 KMeans 聚類的實現
+        // 填充 centroids_ 和 labels_
+    }
+    const Matrix& get_centroids() const { return centroids_; }
+    const vector<int>& get_labels() const { return labels_; }
+
+private:
+    int clusters_;
+    int batch_size_;
+    Matrix centroids_;
+    vector<int> labels_;
+};
+
+// 計算目標函數
+void compute_target(const Matrix& feature, const vector<int>& train_labels, int num_clusters, const vector<int>& class_list, 
+                    vector<int>& labels, vector<int>& clus_labels, Matrix& centroids) {
+    int use_classes = class_list.size();
+    int num_clusters_sub = num_clusters / use_classes;
+    int batch_size = 1000;
+
+    labels.resize(feature.size());
+    clus_labels.resize(num_clusters);
+    centroids.resize(num_clusters, vector<float>(feature[0].size(), 0.0f));
+
+    for (int i = 0; i < use_classes; ++i) {
+        int class_id = class_list[i];
+        // 選擇屬於該類的樣本
+        vector<int> indices;
+        for (size_t j = 0; j < train_labels.size(); ++j) {
+            if (train_labels[j] == class_id) {
+                indices.push_back(j);
+            }
+        }
+
+        // 提取屬於該類的樣本
+        Matrix feature_train(indices.size(), vector<float>(feature[0].size(), 0.0f));
+        for (size_t j = 0; j < indices.size(); ++j) {
+            feature_train[j] = feature[indices[j]];
+        }
+
+        // 聚類
+        KMeans kmeans(num_clusters_sub, batch_size);
+        kmeans.fit(feature_train);
+
+        // 保存結果
+        for (size_t j = 0; j < indices.size(); ++j) {
+            labels[indices[j]] = kmeans.get_labels()[j] + i * num_clusters_sub;
+        }
+        copy(kmeans.get_labels().begin(), kmeans.get_labels().end(), clus_labels.begin() + i * num_clusters_sub);
+        copy(kmeans.get_centroids().begin(), kmeans.get_centroids().end(), centroids.begin() + i * num_clusters_sub);
+
+        cout << "FINISH KMEANS " << i << endl;
+    }
+}
+
+// 線性回歸訓練
+void llsr_train(const Matrix& feature_train, const vector<int>& labels_train, Matrix& weights, Matrix& bias, int alpha) {
+    // 假設這裡是一個線性回歸的簡易實現
+    // 根據 feature_train 和 labels_train 訓練模型，填充 weights 和 bias
+}
+
+// 線性回歸測試
+Matrix llsr_test(const Matrix& feature_test, const Matrix& weights, const Matrix& bias) {
+    Matrix result = feature_test;
+    for (size_t i = 0; i < result.size(); ++i) {
+        for (size_t j = 0; j < weights[0].size(); ++j) {
+            result[i][j] = inner_product(result[i].begin(), result[i].end(), weights[j].begin(), 0.0f) + bias[0][j];
+        }
+    }
+    return result;
+}
+
+// LAG 單元
+Matrix LAG_Unit_manual(const Matrix& feature, const vector<int>& train_labels, const vector<int>& class_list, map<string, Matrix>& SAVE,
+                       int num_clusters = 50, int alpha = 5, bool Train = true) {
+    if (Train) {
+        cout << "--------Train LAG Unit--------" << endl;
+        cout << "feature_train shape: (" << feature.size() << ", " << feature[0].size() << ")" << endl;
+
+        vector<int> labels_train, clus_labels;
+        Matrix centroids;
+
+        // 計算聚類目標
+        compute_target(feature, train_labels, num_clusters, class_list, labels_train, clus_labels, centroids);
+
+        // 標準化
+        Matrix scaler = Norm(feature);
+
+        // 訓練線性回歸
+        Matrix weights, bias;
+        llsr_train(scaler, labels_train, weights, bias, alpha);
+
+        // 保存模型
+        SAVE["clus_labels"] = centroids;
+        SAVE["LLSR weight"] = weights;
+        SAVE["LLSR bias"] = bias;
+
+        cout << "weight shape: (" << weights.size() << ", " << weights[0].size() << ")" << endl;
+        cout << "bias shape: (" << bias.size() << ", " << bias[0].size() << ")" << endl;
+
+        // 測試
+        Matrix feature_transformed = llsr_test(scaler, weights, bias);
+        return feature_transformed;
+    } else {
+        cout << "--------Testing--------" << endl;
+        Matrix weights = SAVE["LLSR weight"];
+        Matrix bias = SAVE["LLSR bias"];
+        Matrix scaler = SAVE["scaler"];
+
+        Matrix feature_reduced = llsr_test(scaler, weights, bias);
+        return feature_reduced;
+    }
+}
+
+
 
 
 int main() {
