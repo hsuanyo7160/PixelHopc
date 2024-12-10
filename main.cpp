@@ -239,7 +239,7 @@ FeatureType manual_block_reduce(const FeatureType& input_array, const pair<int, 
 }
 
 // 3.
-// Normalization函式
+// Lag_Unit 函數
 class StandardScaler {
 public:
     void fit(const Matrix& data) {
@@ -436,3 +436,5 @@ int main() {
 
     return 0;
 }
+
+//4. 手刻SVM
